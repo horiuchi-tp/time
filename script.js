@@ -1,4 +1,4 @@
-// ★★★ GASの新しいウェブアプリURL ★★★
+// ★★★ GASのウェブアプリURL設定 ★★★
 const API_URL = "https://script.google.com/macros/s/AKfycbyH9aWS3TRHF9Ja2OA2-qSJk9KyR9SuAt88v8hWu2MFrURp-dnuDSi9__1K1JWyNHpS/exec";
 
 document.addEventListener('DOMContentLoaded', () => {
@@ -22,7 +22,7 @@ document.addEventListener('DOMContentLoaded', () => {
   const scannerPopup = document.getElementById('scanner-popup');
   const closeScannerButton = document.getElementById('close-scanner');
   const fallingAlert = document.getElementById('fallingAlert');
-  const loadingOverlay = document.getElementById('loadingOverlay'); // ★追加
+  const loadingOverlay = document.getElementById('loadingOverlay'); 
   let codeReader = null;
 
   let fieldCount = 0;
@@ -77,42 +77,74 @@ document.addEventListener('DOMContentLoaded', () => {
     const fileInput = div.querySelector(`#file-${id}`);
 
     if(!isFirst) div.querySelector('.delete-btn').addEventListener('click', e => { const t=e.target.dataset.target; document.getElementById(t)?.remove(); fieldCount--; updateFieldLabels(); });
+    
+    // カメラ起動
     cameraIcon.addEventListener('click', ()=> startScanner(telInput, nameDisplay));
+    
+    // 画像選択（ローディング表示付き）
     galleryIcon.addEventListener('click', ()=> fileInput.click());
     fileInput.addEventListener('change', async ev => {
       if (ev.target.files && ev.target.files[0]) {
-        await handleImageQR(div, ev.target.files[0], telInput, nameDisplay);
-        checkAndAddField(div);
-        ev.target.value='';
+        showLoading(); 
+        try {
+          await handleImageQR(div, ev.target.files[0], telInput, nameDisplay);
+          checkAndAddField(div);
+        } catch(e) {
+          console.error(e);
+        } finally {
+          hideLoading(); 
+          ev.target.value=''; 
+        }
       }
     });
+    
     telInput.addEventListener('input', ()=> checkAndAddField(div));
     timeSelect.addEventListener('change', ()=> checkAndAddField(div));
   }
   function updateFieldLabels(){ document.querySelectorAll('.input-pair').forEach((p,i)=>{ p.querySelector('.tel-input label').textContent=`電話番号 (${i+1})`; p.querySelector('.time-input label').textContent=`時間 (${i+1})`; }); }
   function checkAndAddField(pair){ const tel=pair.querySelector('input[type="tel"]'), sel=pair.querySelector('select'); const isLast=!pair.nextElementSibling; if(isLast && tel.value.trim()!=='' && sel.value!=='') addPhoneTimeField(); }
 
-  // ---- 画像 → QR（多段） ----
+  // ---- 画像 → QR（ハイブリッド高速化版） ----
   async function handleImageQR(pairDiv, file, telInput, nameDisplay){
     try{
       const texts = await detectQRCandidates(file);
-      if(!texts.length){ alert('QRが検出できませんでした。明るい場所で撮影した画像や、ピントの合った画像をお試しください。'); return; }
+      if(!texts.length){ alert('QRが検出できませんでした。'); return; }
       let best=null, bestScore=-999;
       for(const t of texts){ const s=scoreCustomerQR(t); if(s>bestScore){ bestScore=s; best=t; } }
-      if(best===null || bestScore<7){ alert('顧客情報形式のQRが見つかりませんでした（住所QRが選択された可能性）。'); return; }
+      if(best===null || bestScore<7){ alert('顧客情報形式のQRが見つかりませんでした。'); return; }
       const parts = best.split(',').map(x=>(x||'').trim());
       const tel = (parts[1]||'').replace(/-/g,''); const cust = parts[2]||'';
-      if(!/^0\d{9,10}$/.test(tel)){ alert('QR内の電話番号形式が想定外です（0始まり10〜11桁）。'); return; }
+      if(!/^0\d{9,10}$/.test(tel)){ alert('QR内の電話番号形式が想定外です。'); return; }
       telInput.value=tel; nameDisplay.textContent = cust?`(${cust} 様)`:''; pairDiv.dataset.customerName=cust; pairDiv.dataset.qrFullData=best;
-    }catch(e){ console.error(e); alert('画像からの読取中にエラーが発生しました。別の画像をお試しください。'); }
+    }catch(e){ console.error(e); alert('読み取りエラーが発生しました。'); }
   }
+
+  // ★修正: 2段階解析ロジック
   async function detectQRCandidates(file){
     const img = await loadImageFromFile(file);
     const canvases = [];
-    canvases.push(drawToCanvas(img, 1.0, false));
-    canvases.push(drawToCanvas(img, 1.8, false));
-    canvases.push(drawToCanvas(img, 1.0, true));
-    canvases.push(drawToCanvas(img, 1.8, true));
+    
+    // 1. まずリサイズ版（高速）を用意
+    const MAX_DIM = 1200;
+    let scale = 1.0;
+    let resized = false;
+    if (img.width > MAX_DIM || img.height > MAX_DIM) {
+      scale = MAX_DIM / Math.max(img.width, img.height);
+      resized = true;
+    }
+
+    // パターンA: リサイズ画像（通常）
+    canvases.push(drawToCanvas(img, scale, false));
+    // パターンB: リサイズ画像（白黒強調）
+    canvases.push(drawToCanvas(img, scale, true));
+
+    // パターンC: 元のサイズ（保険）
+    // リサイズしていた場合のみ、最後に元画像も解析リストへ入れる
+    if (resized) {
+       canvases.push(drawToCanvas(img, 1.0, false));
+    }
+
+    // 解析実行（見つかり次第終了）
     if('BarcodeDetector' in window){
       try{
         const det = new BarcodeDetector({formats:['qr_code']});
@@ -120,20 +152,21 @@ document.addEventListener('DOMContentLoaded', () => {
           const bitmap = await createImageBitmap(c);
           const codes = await det.detect(bitmap);
           const vals = codes.map(x=>(x.rawValue||'').trim()).filter(Boolean);
-          if(vals.length) return uniq(vals);
+          if(vals.length) return uniq(vals); // 見つかったら即リターン（高速）
         }
       }catch(e){ console.warn('BarcodeDetector失敗→ZXing', e); }
     }
+
+    // ZXing 試行（BarcodeDetectorが使えない、または見つからなかった場合）
     const reader = new ZXing.BrowserQRCodeReader();
     const out = [];
     for(const c of canvases){
       await tryZXing(reader, c, out);
-      const [L,R] = splitCanvasLR(c);
-      await tryZXing(reader, L, out);
-      await tryZXing(reader, R, out);
+      if(out.length > 0) break; // 見つかったら即終了
     }
     return uniq(out.filter(Boolean));
   }
+
   function scoreCustomerQR(text){
     let score=0; const t=(text||'').trim(); const p=t.split(',');
     if(p.length===4) score+=5;
@@ -180,12 +213,6 @@ document.addEventListener('DOMContentLoaded', () => {
       if(r && r.text) out.push((r.text||'').trim());
     }catch(_){ /* 無視 */ }
   }
-  function splitCanvasLR(c){
-    const w=c.width,h=c.height;
-    const left=document.createElement('canvas'); left.width=Math.floor(w/2); left.height=h; left.getContext('2d').drawImage(c,0,0,left.width,h,0,0,left.width,h);
-    const right=document.createElement('canvas'); right.width=w-left.width; right.height=h; right.getContext('2d').drawImage(c,left.width,0,right.width,h,0,0,right.width,h);
-    return [left,right];
-  }
   function uniq(a){ return Array.from(new Set(a)); }
 
   // ---- カメラQR ----
@@ -218,13 +245,9 @@ document.addEventListener('DOMContentLoaded', () => {
     fallingAlert.classList.add('show');
   }
 
-  // ★追加: ローディングオーバーレイの表示/非表示
-  function showLoading() {
-    loadingOverlay.style.display = 'flex';
-  }
-  function hideLoading() {
-    loadingOverlay.style.display = 'none';
-  }
+  // ローディング制御
+  function showLoading() { loadingOverlay.style.display = 'flex'; }
+  function hideLoading() { loadingOverlay.style.display = 'none'; }
 
   // ---- 送信まわり（fetch使用） ----
   function validateForm(){
@@ -245,12 +268,12 @@ document.addEventListener('DOMContentLoaded', () => {
   function onSuccess(msg){
     console.log(msg); saveStaffCode(); phoneTimeFields.innerHTML=''; fieldCount=0; addPhoneTimeField(true);
     submitBtn.disabled=false; submitBtn.textContent='送信';
-    hideLoading(); // ★追加: ローディング終了
+    hideLoading();
     successModalOverlay.style.display='flex';
     successModal.classList.remove('show'); void successModal.offsetWidth; successModal.classList.add('show');
   }
   function onFailure(err){
-    hideLoading(); // ★追加: ローディング終了
+    hideLoading();
     alert('残念！送信失敗です！\nもう一度送信してください。\n\nエラー内容: '+err.message);
     submitBtn.disabled=false; submitBtn.textContent='送信';
   }
@@ -264,9 +287,8 @@ document.addEventListener('DOMContentLoaded', () => {
     if(!dataPairs.length){ showFallingAlert('記入漏れアリ！'); return; }
     
     submitBtn.disabled=true; submitBtn.textContent='送信中...';
-    showLoading(); // ★追加: ローディング開始
+    showLoading();
 
-    // fetch で GAS に POST
     const payload = {
       visitDate: visitDateInput.value,
       staffCode: staffCodeInput.value.trim(),
@@ -296,7 +318,6 @@ document.addEventListener('DOMContentLoaded', () => {
     
     executeSearchBtn.disabled=true; executeSearchBtn.textContent='検索中...'; searchResultArea.innerHTML='<p>検索しています...</p>';
 
-    // fetch で GAS に GET
     const url = `${API_URL}?action=search&date=${date}&code=${code}`;
 
     fetch(url)
