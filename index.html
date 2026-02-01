@@ -1,0 +1,82 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+<title>HT お伺い時間報告</title>
+<script src="https://cdn.jsdelivr.net/npm/@zxing/library@0.21.0/umd/index.min.js"></script>
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+<div class="container">
+  <h1>HT お伺い時間報告</h1>
+  <div class="form-group"><label for="visitDate">お伺い日</label><input type="date" id="visitDate"></div>
+  <div class="form-group">
+    <label for="staffCode">担当者コード</label>
+    <input type="tel" inputmode="numeric" pattern="[0-9]*" id="staffCode" placeholder="4桁または5桁のコードを入力">
+    <div id="staffCodeError" class="error-message"></div>
+  </div>
+  
+  <div class="notice-message">
+    <p>手入力の際は必ず指示書の第1連絡先を記載</p>
+  </div>
+
+  <div id="phoneTimeFields"></div>
+  <div class="sub-notice">
+    <p>※第1連絡先が固定電話の場合もその番号を記載してください。</p>
+    <p>※第2連絡先が携帯電話であればSMSはそちらに送信されます。</p>
+  </div>
+  <div class="credit-footer"><p>株式会社&emsp;堀内トランスポート</p></div>
+</div>
+
+<div class="bottom-button-container">
+  <button id="submitBtn" class="btn submit-btn">送信</button>
+  <button id="openSearchModalBtn" class="btn search-btn">過去の記録を検索</button>
+</div>
+
+<div id="loadingOverlay">
+  <div class="spinner"></div>
+  <p>送信中...</p>
+</div>
+
+<div id="successModalOverlay" class="modal-overlay">
+  <div id="successModal" class="modal-content">
+    <div class="icon">
+      <svg class="tool" viewBox="0 0 64 64" aria-label="プラスドライバー" role="img">
+        <path d="M28 36l-2-2 16-16 2 2-16 16z" fill="#777"/>
+        <rect x="40" y="12" width="8" height="8" rx="2" ry="2" fill="#999"/>
+        <rect x="12" y="38" width="16" height="12" rx="6" ry="6" fill="#e07a00"/>
+        <rect x="24" y="36" width="6" height="16" rx="2" ry="2" fill="#c76600"/>
+      </svg>
+      <svg class="tool" viewBox="0 0 64 64" aria-label="ラジオペンチ" role="img">
+        <path d="M34 18l8 8-6 6-8-8z" fill="#8892a0"/>
+        <path d="M28 24l12 12-2 2c-3 3-9 3-12 0l-4-4c-3-3-3-9 0-12l2-2 4 4z" fill="#6b7280"/>
+        <path d="M16 40c-3 3-3 8 0 11s8 3 11 0l3-3-11-11-3 3z" fill="#374151"/>
+      </svg>
+    </div>
+    <p>安心してください<br>送信できましたよ！</p>
+    <button id="successOkBtn">OK</button>
+  </div>
+</div>
+
+<div id="searchInputModalOverlay" class="modal-overlay">
+  <div class="modal-content">
+    <span class="modal-close-btn">&times;</span>
+    <h2>記録を検索</h2>
+    <div class="form-group" style="text-align:left;"><label for="searchVisitDate">お伺い日</label><input type="date" id="searchVisitDate"></div>
+    <div class="form-group" style="text-align:left;"><label for="searchStaffCode">担当者コード</label><input type="tel" inputmode="numeric" pattern="[0-9]*" id="searchStaffCode" placeholder="4桁または5桁のコード"></div>
+    <button id="executeSearchBtn" class="btn submit-btn">この条件で検索</button>
+  </div>
+</div>
+
+<div id="searchResultModalOverlay" class="modal-overlay">
+  <div class="modal-content"><span class="modal-close-btn">&times;</span><h2>検索結果</h2><div id="searchResultArea"></div></div>
+</div>
+
+<div id="scanner-popup"><video id="scanner-video"></video><p>QRコードをカメラに向けてください</p><button id="close-scanner">キャンセル</button></div>
+
+<div id="fallingAlert">記入漏れアリ！</div>
+
+<script src="script.js"></script>
+</body>
+</html>
