@@ -326,16 +326,31 @@ document.addEventListener('DOMContentLoaded', () => {
       executeSearchBtn.disabled=false; executeSearchBtn.textContent='この条件で検索';
       if(result.status === 'success'){
         const results = result.data;
-        if(results && results.length>0){
-          let html='<table><thead><tr><th>顧客名</th><th>電話番号</th><th>時間</th><th>商品名</th></tr></thead><tbody>';
-          results.forEach(r=>{ const tel=String(r.tel1||''); const m=tel.length>4?'****'+tel.substring(tel.length-4):tel;
-            html+=`<tr><td>${r.customerName||'N/A'}</td><td>${m}</td><td>${r.time? r.time+':00':'N/A'}</td><td>${r.productName||'(明細なし)'}</td></tr>`;
+if (results && results.length > 0) {
+          // テーブル生成（4列：訪問日、顧客名、電話番号、時間）※F列削除
+          let html = '<table class="result-table"><thead><tr><th>訪問日</th><th>顧客名</th><th>電話番号</th><th>時間</th></tr></thead><tbody>';
+          
+          results.forEach(r => {
+            const tel = String(r.tel1 || '');
+            const maskedTel = tel.length > 4 ? '****' + tel.substring(tel.length - 4) : tel;
+            const timeDisplay = r.time ? r.time + ':00' : '';
+            
+            html += `<tr>
+              <td>${r.date || ''}</td>
+              <td>${r.customerName || ''}</td>
+              <td>${maskedTel}</td>
+              <td>${timeDisplay}</td>
+            </tr>`;
           });
-          html+='</tbody></table>'; searchResultArea.innerHTML=html;
-        }else{ searchResultArea.innerHTML='<p>指定された条件に一致する記録は見つかりませんでした。</p>'; }
-        searchInputModalOverlay.style.display='none'; searchResultModalOverlay.style.display='flex';
-      } else {
-        alert(`検索に失敗しました: ${result.message}`);
+          
+          html += '</tbody></table>';
+          searchResultArea.innerHTML = html;
+        } else {
+          searchResultArea.innerHTML = '<p>指定された条件に一致する記録は見つかりませんでした。</p>';
+        }
+        searchInputModalOverlay.style.display = 'none';
+        searchResultModalOverlay.style.display = 'flex';
+      } else {        alert(`検索に失敗しました: ${result.message}`);
       }
     })
     .catch(err => {
